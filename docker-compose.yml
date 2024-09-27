@@ -1,0 +1,39 @@
+services:
+  sqlserver:
+    image: "mcr.microsoft.com/mssql/server:2022-latest"
+    container_name: sqlserver
+    environment:
+      SA_PASSWORD: ${SQLSERVER_SA_PASSWORD}
+      ACCEPT_EULA: "Y"
+    command: >
+      /bin/bash -c "
+      /opt/mssql/bin/sqlservr &
+
+      until /opt/mssql-tools/bin/sqlcmd -l 2 -S sqlserver -U sa -P '${SQLSERVER_SA_PASSWORD}' -Q 'SELECT 1' &> /dev/null; do
+        >&2 echo '>>>>>>>>>> SQL Server is unavailable - sleeping <<<<<<<<<<';
+        sleep 5;
+      done;
+      echo '>>>>>>>>>> SQL Server is ready - executing init script <<<<<<<<<<';
+      /opt/mssql-tools/bin/sqlcmd -l 5 -S sqlserver -U sa -P '${SQLSERVER_SA_PASSWORD}' -d master -i /tmp/db-init.sql;
+
+      sleep infinity;"
+    volumes:
+      - ./db-init.sql:/tmp/db-init.sql
+    ports:
+      - 1435:1433
+
+  ROFE.API:
+    image: rofe_api:0.0.1
+    container_name: ROFE.API
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:     
+      - sqlserver
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      AppSettings__DataBaseConnectionString: ${API_DATABASE_CONNECTION}
+      AppSettings__IncludeErrorDetailInResponse: ${API_INCLUDE_ERROR_DETAILS}
+    ports:
+      - 8098:8080  
